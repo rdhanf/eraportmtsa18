@@ -81,25 +81,23 @@
         window.where = where;
         window.orderBy = orderBy;
         
-        // Initialize app when Firebase is ready
-        window.addEventListener('load', () => {
+        // Initialize app immediately when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                window.initializeAppFirebase();
+            });
+        } else {
+            // DOM already loaded
             window.initializeAppFirebase();
-        });
+        }
     </script>
 </head>
 <body class="bg-gray-50 min-h-screen">
     <!-- Loading Screen -->
     <div id="loadingScreen" class="fixed inset-0 bg-white flex items-center justify-center z-50">
         <div class="text-center">
-            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-            <p class="text-gray-600">Memuat aplikasi...</p>
-        </div>
-    </div>
-
-    <!-- Firebase Connection Status -->
-    <div id="connectionStatus" class="fixed top-4 right-4 z-40 hidden">
-        <div class="bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg">
-            ❌ Tidak terhubung ke Firebase
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+            <p class="text-gray-600 text-sm">Loading...</p>
         </div>
     </div>
 
@@ -615,31 +613,74 @@
         let uploadedData = [];
         
         const dataMapel = [
-            "AKIDAH AKHLAK", "AL-QURAN HADIS", "FIQIH", "SEJARAH KEBUDAYAAN ISLAM", "BAHASA INDONESIA", 
-            "BAHASA ARAB", "MATEMATIKA", "BAHASA INGGRIS", "PENDIDIKAN KEWARGANEGARAAN", "ILMU PENGETAHUAN ALAM",
-            "ILMU PENGETAHUAN SOSIAL", "PENDIDIKAN OLAHRAGA DAN JASMANI", "TEKNIK INFORMASI DAN KOMUNIKASI", "SENI BUDAYA", 
-            "TAHSIN AL-QUR'AN", 
+            "AKIDAH AKHLAK", "FIQIH", "SEJARAH KEBUDAYAAN ISLAM", "BAHASA INDONESIA", 
+            "BAHASA ARAB", "MATEMATIKA", "PENDIDIKAN KEWARGANEGARAAN", "ILMU PENGETAHUAN ALAM",
+            "ILMU PENGETAHUAN SOSIAL", "PENDIDIKAN OLAHRAGA DAN JASMANI", "SENI BUDAYA", 
+            "TAHSIN AL-QUR'AN", "PRAKARYA"
         ];
 
         // Initialize app
         async function initializeAppFirebase() {
+            // Show login immediately, then connect Firebase in background
+            document.getElementById('loadingScreen').classList.add('hidden');
+            document.getElementById('loginPage').classList.remove('hidden');
+            
             try {
-                // Test Firebase connection
-                await testFirebaseConnection();
+                // Test Firebase connection with timeout
+                const connectionPromise = testFirebaseConnection();
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Connection timeout')), 3000)
+                );
+                
+                await Promise.race([connectionPromise, timeoutPromise]);
                 isFirebaseReady = true;
                 
-                // Initialize default data if needed
-                await initializeDefaultData();
+                // Initialize default data in background
+                initializeDefaultData().catch(console.error);
                 
-                // Hide loading screen and show login
-                document.getElementById('loadingScreen').classList.add('hidden');
-                document.getElementById('loginPage').classList.remove('hidden');
-                
+                // Show connection success
+                showConnectionStatus('✅ Firebase terhubung', 'success');
                 console.log('✅ Firebase connected successfully!');
             } catch (error) {
                 console.error('❌ Firebase connection failed:', error);
-                // Try offline mode instead of showing error
-                initializeOfflineMode();
+                // Continue in offline mode
+                isFirebaseReady = false;
+                initializeDemoData();
+                showConnectionStatus('⚠️ Mode Offline - Data Demo', 'warning');
+            }
+        }
+
+        // Show connection status
+        function showConnectionStatus(message, type = 'info') {
+            // Remove existing status
+            const existing = document.getElementById('connectionStatus');
+            if (existing) {
+                existing.remove();
+            }
+            
+            // Create new status indicator
+            const statusDiv = document.createElement('div');
+            statusDiv.id = 'connectionStatus';
+            statusDiv.className = 'fixed top-4 right-4 z-40 px-4 py-2 rounded-lg shadow-lg';
+            
+            if (type === 'success') {
+                statusDiv.className += ' bg-green-500 text-white';
+            } else if (type === 'warning') {
+                statusDiv.className += ' bg-yellow-500 text-white';
+            } else {
+                statusDiv.className += ' bg-blue-500 text-white';
+            }
+            
+            statusDiv.innerHTML = message;
+            document.body.appendChild(statusDiv);
+            
+            // Auto hide success messages after 3 seconds
+            if (type === 'success') {
+                setTimeout(() => {
+                    if (statusDiv && statusDiv.parentNode) {
+                        statusDiv.remove();
+                    }
+                }, 3000);
             }
         }
 
@@ -655,11 +696,7 @@
             document.getElementById('loadingScreen').classList.add('hidden');
             document.getElementById('loginPage').classList.remove('hidden');
             
-            // Show offline indicator
-            const offlineIndicator = document.createElement('div');
-            offlineIndicator.className = 'fixed top-4 right-4 z-40 bg-yellow-500 text-white px-4 py-2 rounded-lg shadow-lg';
-            offlineIndicator.innerHTML = '⚠️ Mode Offline - Data Demo';
-            document.body.appendChild(offlineIndicator);
+            showConnectionStatus('⚠️ Mode Offline - Data Demo', 'warning');
         }
 
         // Initialize demo data for offline mode
@@ -1643,7 +1680,7 @@
                     <div class="text-center mb-8">
                         <h1 class="text-2xl font-bold text-primary mb-2">RAPORT SISWA</h1>
                         <h2 class="text-xl font-semibold">MTS ATTAQWA 18</h2>
-                        <p class="text-gray-600">Tahun Pelajaran 2025/2026</p>
+                        <p class="text-gray-600">Tahun Pelajaran 2024/2025</p>
                     </div>
                     
                     <div class="grid grid-cols-2 gap-8 mb-8">
@@ -1742,64 +1779,125 @@
             // Ensure raport content exists
             const raportContent = document.getElementById('raportContent');
             if (!raportContent) {
-                alert('❌ Raport belum di-generate! Pilih siswa terlebih dahulu.');
+                showMessage('❌ Raport belum di-generate! Pilih siswa terlebih dahulu.', 'error');
                 return;
             }
             
-            // Add print-specific styles
-            const printStyles = `
-                <style>
-                    @media print {
-                        @page {
-                            size: A4;
-                            margin: 1cm;
-                        }
-                        
-                        body * {
-                            visibility: hidden;
-                        }
-                        
-                        #raportContent, #raportContent * {
-                            visibility: visible;
-                        }
-                        
-                        #raportContent {
-                            position: absolute;
-                            left: 0;
-                            top: 0;
-                            width: 100%;
-                            font-size: 12px;
-                        }
-                        
-                        .no-print {
-                            display: none !important;
-                        }
-                        
-                        table {
-                            page-break-inside: avoid;
-                        }
-                        
-                        tr {
-                            page-break-inside: avoid;
-                        }
-                    }
-                </style>
-            `;
-            
-            // Add styles to head if not already present
-            if (!document.querySelector('#printStyles')) {
-                const styleElement = document.createElement('style');
-                styleElement.id = 'printStyles';
-                styleElement.innerHTML = printStyles;
-                document.head.appendChild(styleElement);
+            // Create a new window/tab for printing (this works in sandbox)
+            const printWindow = window.open('', '_blank', 'width=800,height=600');
+            if (!printWindow) {
+                showMessage('❌ Pop-up diblokir! Izinkan pop-up untuk mencetak raport.', 'error');
+                return;
             }
             
-            console.log('✅ Print styles added, calling window.print()');
+            // Get the raport content
+            const raportHTML = raportContent.outerHTML;
             
-            // Small delay to ensure styles are applied
-            setTimeout(() => {
-                window.print();
-            }, 100);
+            // Create complete HTML document for printing
+            const printDocument = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Raport Siswa - MTS ATTAQWA 18</title>
+                    <script src="https://cdn.tailwindcss.com"></script>
+                    <style>
+                        @media print {
+                            @page {
+                                size: A4;
+                                margin: 1cm;
+                            }
+                            
+                            .no-print {
+                                display: none !important;
+                            }
+                            
+                            table {
+                                page-break-inside: avoid;
+                            }
+                            
+                            tr {
+                                page-break-inside: avoid;
+                            }
+                        }
+                        
+                        body {
+                            font-family: Arial, sans-serif;
+                            margin: 0;
+                            padding: 20px;
+                        }
+                        
+                        .print-controls {
+                            text-align: center;
+                            margin-bottom: 20px;
+                            padding: 15px;
+                            background: #f3f4f6;
+                            border-radius: 8px;
+                        }
+                        
+                        .print-btn {
+                            background: #1e40af;
+                            color: white;
+                            padding: 10px 20px;
+                            border: none;
+                            border-radius: 5px;
+                            cursor: pointer;
+                            margin: 0 5px;
+                            font-size: 16px;
+                        }
+                        
+                        .print-btn:hover {
+                            background: #1d4ed8;
+                        }
+                        
+                        .download-btn {
+                            background: #059669;
+                            color: white;
+                            padding: 10px 20px;
+                            border: none;
+                            border-radius: 5px;
+                            cursor: pointer;
+                            margin: 0 5px;
+                            font-size: 16px;
+                        }
+                        
+                        .download-btn:hover {
+                            background: #047857;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="print-controls no-print">
+                        <h2>Raport Siap Dicetak</h2>
+                        <p>Klik tombol di bawah untuk mencetak atau download PDF:</p>
+                        <button class="print-btn" onclick="window.print()">🖨️ Cetak Raport</button>
+                        <button class="download-btn" onclick="downloadAsPDF()">📄 Save as PDF</button>
+                        <button class="print-btn" onclick="window.close()" style="background: #6b7280;">❌ Tutup</button>
+                    </div>
+                    
+                    ${raportHTML}
+                    
+                    <script>
+                        function downloadAsPDF() {
+                            // Trigger print dialog with instruction to save as PDF
+                            alert('Untuk download PDF:\\n1. Klik "Cetak Raport"\\n2. Pilih "Save as PDF" sebagai printer\\n3. Klik "Save"');
+                            window.print();
+                        }
+                        
+                        // Auto-focus on print button
+                        window.onload = function() {
+                            document.querySelector('.print-btn').focus();
+                        };
+                    </script>
+                <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9838ab49f6f6d9e8',t:'MTc1ODYxNjExMi4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+                </html>
+            `;
+            
+            // Write the document to the new window
+            printWindow.document.write(printDocument);
+            printWindow.document.close();
+            
+            showMessage('✅ Raport dibuka di tab baru. Silakan cetak dari sana!', 'success');
+            console.log('✅ Print window opened successfully');
         }
         
         function downloadRaportPDF() {
@@ -1807,14 +1905,56 @@
             
             const raportContent = document.getElementById('raportContent');
             if (!raportContent) {
-                alert('❌ Raport belum di-generate! Pilih siswa terlebih dahulu.');
+                showMessage('❌ Raport belum di-generate! Pilih siswa terlebih dahulu.', 'error');
                 return;
             }
             
-            // For now, just trigger print dialog
-            // In a real implementation, you would use a PDF library like jsPDF
-            alert('📄 Fitur download PDF akan segera tersedia. Untuk saat ini, gunakan tombol Cetak dan pilih "Save as PDF" di dialog print.');
+            // Just call cetakRaport which will open in new tab with PDF download option
             cetakRaport();
+        }
+        
+        // Helper function to show messages without alert()
+        function showMessage(message, type = 'info') {
+            // Remove existing message if any
+            const existingMessage = document.getElementById('tempMessage');
+            if (existingMessage) {
+                existingMessage.remove();
+            }
+            
+            // Create message element
+            const messageDiv = document.createElement('div');
+            messageDiv.id = 'tempMessage';
+            messageDiv.className = `fixed top-4 right-4 z-50 px-6 py-4 rounded-lg shadow-lg max-w-md`;
+            
+            // Set colors based on type
+            if (type === 'error') {
+                messageDiv.className += ' bg-red-500 text-white';
+            } else if (type === 'success') {
+                messageDiv.className += ' bg-green-500 text-white';
+            } else {
+                messageDiv.className += ' bg-blue-500 text-white';
+            }
+            
+            messageDiv.innerHTML = `
+                <div class="flex items-center justify-between">
+                    <span>${message}</span>
+                    <button onclick="this.parentElement.parentElement.remove()" class="ml-4 text-white hover:text-gray-200">
+                        ✕
+                    </button>
+                </div>
+            `;
+            
+            // Add to page
+            document.body.appendChild(messageDiv);
+            
+            // Auto remove after 5 seconds
+            setTimeout(() => {
+                if (messageDiv && messageDiv.parentNode) {
+                    messageDiv.remove();
+                }
+            }, 5000);
+            
+            console.log(`📢 Message: ${message}`);
         }
 
         // Delete functions
@@ -1908,5 +2048,5 @@
             showAddSiswaForm();
         }
     </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9838e9c07054d9e8',t:'MTc1ODYxODY3MC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</body>
 </html>
