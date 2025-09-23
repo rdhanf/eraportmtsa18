@@ -1680,7 +1680,7 @@
                     <div class="text-center mb-8">
                         <h1 class="text-2xl font-bold text-primary mb-2">RAPORT SISWA</h1>
                         <h2 class="text-xl font-semibold">MTS ATTAQWA 18</h2>
-                        <p class="text-gray-600">Tahun Pelajaran 2024/2025</p>
+                        <p class="text-gray-600">Tahun Pelajaran 2025/2026</p>
                     </div>
                     
                     <div class="grid grid-cols-2 gap-8 mb-8">
@@ -1826,6 +1826,16 @@
                             padding: 20px;
                         }
                         
+                        .print-only {
+                            display: none;
+                        }
+                        
+                        @media print {
+                            .print-only {
+                                display: block !important;
+                            }
+                        }
+                        
                         .print-controls {
                             text-align: center;
                             margin-bottom: 20px;
@@ -1888,7 +1898,7 @@
                             document.querySelector('.print-btn').focus();
                         };
                     </script>
-                <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9838ab49f6f6d9e8',t:'MTc1ODYxNjExMi4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+                <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9839c824e308c6b2',t:'MTc1ODYyNzc3OS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
                 </html>
             `;
             
