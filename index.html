@@ -81,23 +81,25 @@
         window.where = where;
         window.orderBy = orderBy;
         
-        // Initialize app immediately when DOM is ready
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => {
-                window.initializeAppFirebase();
-            });
-        } else {
-            // DOM already loaded
+        // Initialize app when Firebase is ready
+        window.addEventListener('load', () => {
             window.initializeAppFirebase();
-        }
+        });
     </script>
 </head>
 <body class="bg-gray-50 min-h-screen">
     <!-- Loading Screen -->
     <div id="loadingScreen" class="fixed inset-0 bg-white flex items-center justify-center z-50">
         <div class="text-center">
-            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
-            <p class="text-gray-600 text-sm">Loading...</p>
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+            <p class="text-gray-600">Memuat aplikasi...</p>
+        </div>
+    </div>
+
+    <!-- Firebase Connection Status -->
+    <div id="connectionStatus" class="fixed top-4 right-4 z-40 hidden">
+        <div class="bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg">
+            ❌ Tidak terhubung ke Firebase
         </div>
     </div>
 
@@ -226,8 +228,8 @@
                             </button>
                         </div>
                     </div>
-                    
-                    <div class="mb-4">
+
+                    <div class="mb-4 flex space-x-4 items-center">
                         <select id="kelasFilter" onchange="filterSiswaByKelas()" class="px-4 py-2 border border-gray-300 rounded-lg">
                             <option value="">Semua Kelas</option>
                             <option value="VII A">VII A</option>
@@ -237,25 +239,32 @@
                             <option value="IX A">IX A</option>
                             <option value="IX B">IX B</option>
                         </select>
+
+                        <select id="sortAbjadFilter" onchange="sortSiswaByAbjad()" class="px-4 py-2 border border-gray-300 rounded-lg">
+                            <option value="default">Urutkan Nama (Default)</option>
+                            <option value="asc">Nama (A-Z)</option>
+                            <option value="desc">Nama (Z-A)</option>
+                        </select>
                     </div>
-                    
                     <div class="overflow-x-auto">
                         <table class="w-full border-collapse border border-gray-300">
                             <thead>
                                 <tr class="bg-gray-50">
                                     <th class="border border-gray-300 px-4 py-3 text-left">NIS</th>
-                                    <th class="border border-gray-300 px-4 py-3 text-left">Nama</th>
+                                    
+                                    <th 
+                                        class="border border-gray-300 px-4 py-3 text-left cursor-pointer hover:bg-gray-100"
+                                        onclick="sortSiswaTable('nama')"
+                                        id="headerNama"
+                                    >
+                                        Nama <span id="sortIcon"></span>
+                                    </th>
                                     <th class="border border-gray-300 px-4 py-3 text-left">Kelas</th>
                                     <th class="border border-gray-300 px-4 py-3 text-left">Wali Kelas</th>
                                     <th class="border border-gray-300 px-4 py-3 text-left">Aksi</th>
                                 </tr>
                             </thead>
                             <tbody id="siswaTableBody">
-                                <tr>
-                                    <td colspan="5" class="border border-gray-300 px-4 py-8 text-center text-gray-500">
-                                        Memuat data siswa...
-                                    </td>
-                                </tr>
                             </tbody>
                         </table>
                     </div>
@@ -621,66 +630,23 @@
 
         // Initialize app
         async function initializeAppFirebase() {
-            // Show login immediately, then connect Firebase in background
-            document.getElementById('loadingScreen').classList.add('hidden');
-            document.getElementById('loginPage').classList.remove('hidden');
-            
             try {
-                // Test Firebase connection with timeout
-                const connectionPromise = testFirebaseConnection();
-                const timeoutPromise = new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('Connection timeout')), 3000)
-                );
-                
-                await Promise.race([connectionPromise, timeoutPromise]);
+                // Test Firebase connection
+                await testFirebaseConnection();
                 isFirebaseReady = true;
                 
-                // Initialize default data in background
-                initializeDefaultData().catch(console.error);
+                // Initialize default data if needed
+                await initializeDefaultData();
                 
-                // Show connection success
-                showConnectionStatus('✅ Firebase terhubung', 'success');
+                // Hide loading screen and show login
+                document.getElementById('loadingScreen').classList.add('hidden');
+                document.getElementById('loginPage').classList.remove('hidden');
+                
                 console.log('✅ Firebase connected successfully!');
             } catch (error) {
                 console.error('❌ Firebase connection failed:', error);
-                // Continue in offline mode
-                isFirebaseReady = false;
-                initializeDemoData();
-                showConnectionStatus('⚠️ Mode Offline - Data Demo', 'warning');
-            }
-        }
-
-        // Show connection status
-        function showConnectionStatus(message, type = 'info') {
-            // Remove existing status
-            const existing = document.getElementById('connectionStatus');
-            if (existing) {
-                existing.remove();
-            }
-            
-            // Create new status indicator
-            const statusDiv = document.createElement('div');
-            statusDiv.id = 'connectionStatus';
-            statusDiv.className = 'fixed top-4 right-4 z-40 px-4 py-2 rounded-lg shadow-lg';
-            
-            if (type === 'success') {
-                statusDiv.className += ' bg-green-500 text-white';
-            } else if (type === 'warning') {
-                statusDiv.className += ' bg-yellow-500 text-white';
-            } else {
-                statusDiv.className += ' bg-blue-500 text-white';
-            }
-            
-            statusDiv.innerHTML = message;
-            document.body.appendChild(statusDiv);
-            
-            // Auto hide success messages after 3 seconds
-            if (type === 'success') {
-                setTimeout(() => {
-                    if (statusDiv && statusDiv.parentNode) {
-                        statusDiv.remove();
-                    }
-                }, 3000);
+                // Try offline mode instead of showing error
+                initializeOfflineMode();
             }
         }
 
@@ -696,7 +662,11 @@
             document.getElementById('loadingScreen').classList.add('hidden');
             document.getElementById('loginPage').classList.remove('hidden');
             
-            showConnectionStatus('⚠️ Mode Offline - Data Demo', 'warning');
+            // Show offline indicator
+            const offlineIndicator = document.createElement('div');
+            offlineIndicator.className = 'fixed top-4 right-4 z-40 bg-yellow-500 text-white px-4 py-2 rounded-lg shadow-lg';
+            offlineIndicator.innerHTML = '⚠️ Mode Offline - Data Demo';
+            document.body.appendChild(offlineIndicator);
         }
 
         // Initialize demo data for offline mode
@@ -1779,135 +1749,64 @@
             // Ensure raport content exists
             const raportContent = document.getElementById('raportContent');
             if (!raportContent) {
-                showMessage('❌ Raport belum di-generate! Pilih siswa terlebih dahulu.', 'error');
+                alert('❌ Raport belum di-generate! Pilih siswa terlebih dahulu.');
                 return;
             }
             
-            // Create a new window/tab for printing (this works in sandbox)
-            const printWindow = window.open('', '_blank', 'width=800,height=600');
-            if (!printWindow) {
-                showMessage('❌ Pop-up diblokir! Izinkan pop-up untuk mencetak raport.', 'error');
-                return;
-            }
-            
-            // Get the raport content
-            const raportHTML = raportContent.outerHTML;
-            
-            // Create complete HTML document for printing
-            const printDocument = `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>Raport Siswa - MTS ATTAQWA 18</title>
-                    <script src="https://cdn.tailwindcss.com"></script>
-                    <style>
-                        @media print {
-                            @page {
-                                size: A4;
-                                margin: 1cm;
-                            }
-                            
-                            .no-print {
-                                display: none !important;
-                            }
-                            
-                            table {
-                                page-break-inside: avoid;
-                            }
-                            
-                            tr {
-                                page-break-inside: avoid;
-                            }
+            // Add print-specific styles
+            const printStyles = `
+                <style>
+                    @media print {
+                        @page {
+                            size: A4;
+                            margin: 1cm;
                         }
                         
-                        body {
-                            font-family: Arial, sans-serif;
-                            margin: 0;
-                            padding: 20px;
+                        body * {
+                            visibility: hidden;
                         }
                         
-                        .print-only {
-                            display: none;
+                        #raportContent, #raportContent * {
+                            visibility: visible;
                         }
                         
-                        @media print {
-                            .print-only {
-                                display: block !important;
-                            }
+                        #raportContent {
+                            position: absolute;
+                            left: 0;
+                            top: 0;
+                            width: 100%;
+                            font-size: 12px;
                         }
                         
-                        .print-controls {
-                            text-align: center;
-                            margin-bottom: 20px;
-                            padding: 15px;
-                            background: #f3f4f6;
-                            border-radius: 8px;
+                        .no-print {
+                            display: none !important;
                         }
                         
-                        .print-btn {
-                            background: #1e40af;
-                            color: white;
-                            padding: 10px 20px;
-                            border: none;
-                            border-radius: 5px;
-                            cursor: pointer;
-                            margin: 0 5px;
-                            font-size: 16px;
+                        table {
+                            page-break-inside: avoid;
                         }
                         
-                        .print-btn:hover {
-                            background: #1d4ed8;
+                        tr {
+                            page-break-inside: avoid;
                         }
-                        
-                        .download-btn {
-                            background: #059669;
-                            color: white;
-                            padding: 10px 20px;
-                            border: none;
-                            border-radius: 5px;
-                            cursor: pointer;
-                            margin: 0 5px;
-                            font-size: 16px;
-                        }
-                        
-                        .download-btn:hover {
-                            background: #047857;
-                        }
-                    </style>
-                </head>
-                <body>
-                    <div class="print-controls no-print">
-                        <h2>Raport Siap Dicetak</h2>
-                        <p>Klik tombol di bawah untuk mencetak atau download PDF:</p>
-                        <button class="print-btn" onclick="window.print()">🖨️ Cetak Raport</button>
-                        <button class="download-btn" onclick="downloadAsPDF()">📄 Save as PDF</button>
-                        <button class="print-btn" onclick="window.close()" style="background: #6b7280;">❌ Tutup</button>
-                    </div>
-                    
-                    ${raportHTML}
-                    
-                    <script>
-                        function downloadAsPDF() {
-                            // Trigger print dialog with instruction to save as PDF
-                            alert('Untuk download PDF:\\n1. Klik "Cetak Raport"\\n2. Pilih "Save as PDF" sebagai printer\\n3. Klik "Save"');
-                            window.print();
-                        }
-                        
-                        // Auto-focus on print button
-                        window.onload = function() {
-                            document.querySelector('.print-btn').focus();
-                        };
-                    </script>
-                <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9839c824e308c6b2',t:'MTc1ODYyNzc3OS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
-                </html>
+                    }
+                </style>
             `;
             
-            // Write the document to the new window
-            printWindow.document.write(printDocument);
-            printWindow.document.close();
+            // Add styles to head if not already present
+            if (!document.querySelector('#printStyles')) {
+                const styleElement = document.createElement('style');
+                styleElement.id = 'printStyles';
+                styleElement.innerHTML = printStyles;
+                document.head.appendChild(styleElement);
+            }
             
-            showMessage('✅ Raport dibuka di tab baru. Silakan cetak dari sana!', 'success');
-            console.log('✅ Print window opened successfully');
+            console.log('✅ Print styles added, calling window.print()');
+            
+            // Small delay to ensure styles are applied
+            setTimeout(() => {
+                window.print();
+            }, 100);
         }
         
         function downloadRaportPDF() {
@@ -1915,56 +1814,14 @@
             
             const raportContent = document.getElementById('raportContent');
             if (!raportContent) {
-                showMessage('❌ Raport belum di-generate! Pilih siswa terlebih dahulu.', 'error');
+                alert('❌ Raport belum di-generate! Pilih siswa terlebih dahulu.');
                 return;
             }
             
-            // Just call cetakRaport which will open in new tab with PDF download option
+            // For now, just trigger print dialog
+            // In a real implementation, you would use a PDF library like jsPDF
+            alert('📄 Fitur download PDF akan segera tersedia. Untuk saat ini, gunakan tombol Cetak dan pilih "Save as PDF" di dialog print.');
             cetakRaport();
-        }
-        
-        // Helper function to show messages without alert()
-        function showMessage(message, type = 'info') {
-            // Remove existing message if any
-            const existingMessage = document.getElementById('tempMessage');
-            if (existingMessage) {
-                existingMessage.remove();
-            }
-            
-            // Create message element
-            const messageDiv = document.createElement('div');
-            messageDiv.id = 'tempMessage';
-            messageDiv.className = `fixed top-4 right-4 z-50 px-6 py-4 rounded-lg shadow-lg max-w-md`;
-            
-            // Set colors based on type
-            if (type === 'error') {
-                messageDiv.className += ' bg-red-500 text-white';
-            } else if (type === 'success') {
-                messageDiv.className += ' bg-green-500 text-white';
-            } else {
-                messageDiv.className += ' bg-blue-500 text-white';
-            }
-            
-            messageDiv.innerHTML = `
-                <div class="flex items-center justify-between">
-                    <span>${message}</span>
-                    <button onclick="this.parentElement.parentElement.remove()" class="ml-4 text-white hover:text-gray-200">
-                        ✕
-                    </button>
-                </div>
-            `;
-            
-            // Add to page
-            document.body.appendChild(messageDiv);
-            
-            // Auto remove after 5 seconds
-            setTimeout(() => {
-                if (messageDiv && messageDiv.parentNode) {
-                    messageDiv.remove();
-                }
-            }, 5000);
-            
-            console.log(`📢 Message: ${message}`);
         }
 
         // Delete functions
@@ -2058,5 +1915,5 @@
             showAddSiswaForm();
         }
     </script>
-</body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9838e9c07054d9e8',t:'MTc1ODYxODY3MC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
