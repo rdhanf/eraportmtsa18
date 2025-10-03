@@ -22,33 +22,55 @@
     
     <!-- Print Styles for A4 -->
     <style>
-        @media print {
-            @page {
-                size: A4;
-                margin: 1cm;
-            }
-            
-            body * {
-                visibility: hidden;
-            }
-            
-            #raportContent, #raportContent * {
-                visibility: visible;
-            }
-            
-            #raportContent {
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 100%;
-                font-size: 12px;
-            }
-            
-            .no-print {
-                display: none !important;
-            }
+    @media print {
+        @page {
+            size: A4;
+            margin: 1cm;
         }
+
+        body * {
+            visibility: hidden;
+        }
+
+        #raportContent, #raportContent * {
+            visibility: visible;
+        }
+
+        #raportContent {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            font-size: 12px;
+        }
+
+        .no-print {
+            display: none !important;
+        }
+    }
     </style>
+
+    <!-- Layout & Table Styles for Raport -->
+    <style>
+    body { font-family: "Times New Roman", serif; color: #000; }
+    .page { width: 210mm; min-height: 297mm; padding: 10mm 8mm; margin: auto; }
+    .header { display:flex; align-items:center; border-bottom:3px solid #000; padding-bottom:6px; margin-bottom:8px; }
+    .logo { width:72px; height:72px; background:#eee; display:flex; align-items:center; justify-content:center; font-weight:bold; }
+    .school-info { flex:1; text-align:center; line-height:1.05; }
+    .school-info .title { font-size:16px; font-weight:bold; }
+    .school-info .subtitle { font-size:12px; }
+    .meta { display:flex; justify-content:space-between; margin:10px 0 14px 0; font-size:13px; }
+    table.values { width:100%; border-collapse:collapse; font-size:13px; margin-bottom:12px; }
+    table.values th, table.values td { border:1px solid #000; padding:6px 8px; }
+    table.values th { background:#f2f2f2; }
+    table.values td.center { text-align:center; }
+    .signatures { display:flex; justify-content:space-between; margin-top:28px; font-size:13px; }
+    .sig { width:30%; text-align:center; }
+    .sig .name { margin-top:58px; font-weight:bold; text-decoration:underline; }
+    .footer { margin-top:20px; font-size:11px; text-align:right; }
+    @media screen { .page { box-shadow:0 0 0.5cm rgba(0,0,0,.15); margin:10mm auto; background:#fff; } }
+    </style>
+
     
     <!-- Firebase SDK -->
     <script type="module">
@@ -622,7 +644,7 @@
         let uploadedData = [];
         
         const dataMapel = [
-            "AKIDAH AKHLAK", "AL-QURAN HADIS", "FIQIH", "SEJARAH KEBUDAYAAN ISLAM", "BAHASA INDONESIA", 
+            "AKIDAH AKHLAK", "FIQIH", "SEJARAH KEBUDAYAAN ISLAM", "BAHASA INDONESIA", 
             "BAHASA ARAB", "MATEMATIKA", "PENDIDIKAN KEWARGANEGARAAN", "ILMU PENGETAHUAN ALAM",
             "ILMU PENGETAHUAN SOSIAL", "PENDIDIKAN OLAHRAGA DAN JASMANI", "SENI BUDAYA", 
             "TAHSIN AL-QUR'AN", "PRAKARYA"
@@ -1466,14 +1488,24 @@
         function loadSiswaForNilai() {
             const mapel = document.getElementById('mapelSelect').value;
             const kelas = document.getElementById('kelasSelect').value;
+            const sortBy = document.getElementById('sortSelect')?.value || 'nama_asc';
             
             if (mapel && kelas) {
                 const siswaKelas = dataSiswa.filter(s => s.kelas === kelas);
                 const tbody = document.getElementById('nilaiTableBody');
                 tbody.innerHTML = '';
-                
-                siswaKelas.forEach((siswa, index) => {
-                    // Check if nilai already exists
+
+                // 🔹 Urutkan sesuai pilihan
+                let sortedSiswa = [...siswaKelas];
+                if (sortBy === "nama_asc") {
+                    sortedSiswa.sort((a, b) => (a.nama || "").localeCompare(b.nama || "", 'id', { sensitivity: 'base' }));
+                } else if (sortBy === "nama_desc") {
+                    sortedSiswa.sort((a, b) => (b.nama || "").localeCompare(a.nama || "", 'id', { sensitivity: 'base' }));
+                } else if (sortBy === "nis") {
+                    sortedSiswa.sort((a, b) => (a.nis || "").localeCompare(b.nis || "", 'id', { sensitivity: 'base' }));
+                }
+
+                sortedSiswa.forEach((siswa, index) => {
                     const asesmen = document.getElementById('asesmenSelect').value;
                     const existingNilai = dataNilai.find(n => 
                         n.nis === siswa.nis && n.mapel === mapel && n.asesmen === asesmen
@@ -1486,21 +1518,22 @@
                         <td class="border border-gray-300 px-4 py-2">${siswa.nama}</td>
                         <td class="border border-gray-300 px-4 py-2">
                             <input type="number" min="0" max="100" class="w-full px-2 py-1 border border-gray-300 rounded" 
-                                   id="nilai_${siswa.nis}" placeholder="0-100" value="${existingNilai ? existingNilai.nilai : ''}">
+                                id="nilai_${siswa.nis}" placeholder="0-100" value="${existingNilai ? existingNilai.nilai : ''}">
                         </td>
                         <td class="border border-gray-300 px-4 py-2">
                             <input type="text" class="w-full px-2 py-1 border border-gray-300 rounded" 
-                                   id="deskripsi_${siswa.nis}" placeholder="Deskripsi nilai" value="${existingNilai ? existingNilai.deskripsi : ''}">
+                                id="deskripsi_${siswa.nis}" placeholder="Deskripsi nilai" value="${existingNilai ? existingNilai.deskripsi : ''}">
                         </td>
                     `;
                     tbody.appendChild(row);
                 });
-                
+
                 document.getElementById('nilaiInputArea').classList.remove('hidden');
             } else {
                 document.getElementById('nilaiInputArea').classList.add('hidden');
             }
         }
+
 
         async function simpanNilai() {
             const mapel = document.getElementById('mapelSelect').value;
@@ -1599,7 +1632,12 @@
                     dataSiswa.push(...sampleSiswa);
                     dataNilai.push(...sampleNilai);
                     
-                    sampleSiswa.forEach(siswa => {
+                    // 🔹 Urutkan sampleSiswa A–Z
+                    const sortedSample = [...sampleSiswa].sort((a, b) =>
+                        (a.nama || "").localeCompare(b.nama || "", 'id', { sensitivity: 'base' })
+                    );
+                    
+                    sortedSample.forEach(siswa => {
                         const option = document.createElement('option');
                         option.value = siswa.nis;
                         option.textContent = `${siswa.nama} (${siswa.nis})`;
@@ -1608,7 +1646,12 @@
                     
                     console.log('✅ Added sample data for testing');
                 } else {
-                    siswaKelas.forEach(siswa => {
+                    // 🔹 Urutkan siswaKelas A–Z
+                    const sortedSiswa = [...siswaKelas].sort((a, b) =>
+                        (a.nama || "").localeCompare(b.nama || "", 'id', { sensitivity: 'base' })
+                    );
+                    
+                    sortedSiswa.forEach(siswa => {
                         const option = document.createElement('option');
                         option.value = siswa.nis;
                         option.textContent = `${siswa.nama} (${siswa.nis})`;
@@ -1621,124 +1664,113 @@
             }
         }
 
+
         function previewRaport() {
             const nis = document.getElementById('cetakSiswaSelect').value;
-            
-            console.log('🔍 Preview raport called with NIS:', nis);
-            console.log('📊 Current dataSiswa:', dataSiswa.length);
-            console.log('📊 Current dataNilai:', dataNilai.length);
-            
             if (!nis) {
                 document.getElementById('raportPreview').classList.add('hidden');
-                console.log('⚠️ No NIS selected');
                 return;
             }
-            
+
             const siswa = dataSiswa.find(s => s.nis === nis);
             if (!siswa) {
-                console.error('❌ Siswa not found with NIS:', nis);
-                console.log('Available siswa:', dataSiswa.map(s => ({nis: s.nis, nama: s.nama})));
                 alert('Data siswa tidak ditemukan!');
                 return;
             }
-            
-            console.log('✅ Generating raport for:', siswa.nama);
-            console.log('👤 Siswa data:', siswa);
-            
-            let raportHTML = `
-                <div class="bg-white border-2 border-gray-300 p-8 max-w-4xl mx-auto" id="raportContent">
-                    <div class="text-center mb-8">
-                        <h1 class="text-2xl font-bold text-primary mb-2">RAPORT SISWA</h1>
-                        <h2 class="text-xl font-semibold">MTS ATTAQWA 18</h2>
-                        <p class="text-gray-600">Tahun Pelajaran 2025/2026</p>
-                    </div>
-                    
-                    <div class="grid grid-cols-2 gap-8 mb-8">
-                        <div>
-                            <h3 class="font-semibold mb-4 text-lg border-b border-gray-300 pb-2">Data Siswa</h3>
-                            <table class="w-full">
-                                <tr><td class="py-1 font-medium">Nama</td><td class="py-1">: ${siswa.nama}</td></tr>
-                                <tr><td class="py-1 font-medium">NIS</td><td class="py-1">: ${siswa.nis}</td></tr>
-                                <tr><td class="py-1 font-medium">NISN</td><td class="py-1">: ${siswa.nisn}</td></tr>
-                                <tr><td class="py-1 font-medium">Kelas</td><td class="py-1">: ${siswa.kelas}</td></tr>
-                                <tr><td class="py-1 font-medium">TTL</td><td class="py-1">: ${siswa.ttl}</td></tr>
-                            </table>
-                        </div>
-                        <div>
-                            <h3 class="font-semibold mb-4 text-lg border-b border-gray-300 pb-2">Wali Kelas</h3>
-                            <p class="text-lg">${siswa.waliKelas || 'Belum ditentukan'}</p>
-                        </div>
-                    </div>
-                    
-                    <div class="mb-8">
-                        <h3 class="font-semibold mb-4 text-lg border-b border-gray-300 pb-2">Nilai Mata Pelajaran</h3>
-                        <table class="w-full border-collapse border border-gray-300">
-                            <thead>
-                                <tr class="bg-gray-50">
-                                    <th class="border border-gray-300 px-4 py-3 text-center">No</th>
-                                    <th class="border border-gray-300 px-4 py-3 text-left">Mata Pelajaran</th>
-                                    <th class="border border-gray-300 px-4 py-3 text-center">ASTS</th>
-                                    <th class="border border-gray-300 px-4 py-3 text-center">ASAS</th>
-                                    <th class="border border-gray-300 px-4 py-3 text-center">Rata-rata</th>
-                                    <th class="border border-gray-300 px-4 py-3 text-left">Deskripsi</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-            `;
-            
-            dataMapel.forEach((mapel, index) => {
+
+            // 🔹 Loop nilai
+            let rowsNilai = "";
+            dataMapel.forEach((mapel, i) => {
                 const nilaiASTS = dataNilai.find(n => n.nis === nis && n.mapel === mapel && n.asesmen === 'ASTS');
                 const nilaiASAS = dataNilai.find(n => n.nis === nis && n.mapel === mapel && n.asesmen === 'ASAS');
-                
-                // Calculate average if both values exist
-                let rataRata = '-';
-                if (nilaiASTS && nilaiASAS) {
-                    rataRata = Math.round((nilaiASTS.nilai + nilaiASAS.nilai) / 2);
-                } else if (nilaiASTS) {
-                    rataRata = nilaiASTS.nilai;
-                } else if (nilaiASAS) {
-                    rataRata = nilaiASAS.nilai;
-                }
-                
-                raportHTML += `
-                    <tr>
-                        <td class="border border-gray-300 px-4 py-2 text-center">${index + 1}</td>
-                        <td class="border border-gray-300 px-4 py-2">${mapel}</td>
-                        <td class="border border-gray-300 px-4 py-2 text-center">${nilaiASTS ? nilaiASTS.nilai : '-'}</td>
-                        <td class="border border-gray-300 px-4 py-2 text-center">${nilaiASAS ? nilaiASAS.nilai : '-'}</td>
-                        <td class="border border-gray-300 px-4 py-2 text-center font-semibold">${rataRata}</td>
-                        <td class="border border-gray-300 px-4 py-2">${nilaiASAS ? nilaiASAS.deskripsi : (nilaiASTS ? nilaiASTS.deskripsi : '-')}</td>
-                    </tr>
+                let rataRata = "-";
+                if (nilaiASTS && nilaiASAS) rataRata = Math.round((nilaiASTS.nilai + nilaiASAS.nilai) / 2);
+                else if (nilaiASTS) rataRata = nilaiASTS.nilai;
+                else if (nilaiASAS) rataRata = nilaiASAS.nilai;
+
+                rowsNilai += `
+                <tr>
+                    <td class="center">${i + 1}</td>
+                    <td>${mapel}</td>
+                    <td class="center">${rataRata}</td>
+                    <td>${nilaiASAS ? nilaiASAS.deskripsi : (nilaiASTS ? nilaiASTS.deskripsi : '-')}</td>
+                </tr>
                 `;
             });
-            
-            raportHTML += `
-                            </tbody>
-                        </table>
-                    </div>
-                    
-                    <div class="flex justify-between mt-12">
-                        <div class="text-center">
-                            <p class="mb-16">Wali Kelas</p>
-                            <p class="border-t border-gray-400 pt-2 font-semibold">${siswa.waliKelas || 'Belum ditentukan'}</p>
-                        </div>
-                        <div class="text-center">
-                            <p class="mb-16">Kepala Sekolah</p>
-                            <p class="border-t border-gray-400 pt-2 font-semibold">Drs. H. Asep Ahmad, M.Ed</p>
-                        </div>
-                    </div>
+
+            // 🔹 Template raport baru
+            const raportHTML = `
+            <div class="page" id="raportContent">
+                <!-- Header -->
+                <div class="header">
+                <div class="logo">
+                    <img src="/images/attaqwa.png" alt="Logo Sekolah" style="width:72px; height:72px; object-fit:contain;">
                 </div>
-                
-                <div class="text-center mt-6 no-print">
-                    <button onclick="cetakRaport()" class="bg-primary text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition duration-200 text-lg mr-4">
-                        🖨️ Cetak Raport
-                    </button>
-                    <button onclick="downloadRaportPDF()" class="bg-green-500 text-white px-6 py-3 rounded-lg hover:bg-green-600 transition duration-200 text-lg">
-                        📄 Download PDF
-                    </button>
+                <div class="school-info">
+                    <div class="title">KEMENTERIAN AGAMA REPUBLIK INDONESIA</div>
+                    <div class="title" style="font-size:18px;">MTSS ATTAQWA 18</div>
+                    <div class="subtitle">JL. KH. MUH MUSA TANAH TINGGI RT. 02/05 - Tarumajaya, Bekasi</div>
                 </div>
+                <div style="width:110px; text-align:center;">
+                    <div style="font-size:12px;">Halaman</div>
+                    <div style="font-size:18px; font-weight:bold;">1</div>
+                </div>
+                </div>
+
+                <!-- Data Siswa -->
+                <div class="meta">
+                <div><strong>Nama:</strong> ${siswa.nama}<br><strong>NIS:</strong> ${siswa.nis}<br><strong>NISN:</strong> ${siswa.nisn}</div>
+                <div><strong>Kelas:</strong> ${siswa.kelas}<br><strong>Tahun Ajaran:</strong> 2025/2026</div>
+                <div><strong>TTL:</strong> ${siswa.ttl}<br><strong>Wali Kelas:</strong> ${siswa.waliKelas || '-'}</div>
+                </div>
+
+                <!-- Judul -->
+                <div style="text-align:center; margin:6px 0 12px 0;">
+                <div style="font-weight:bold; font-size:15px;">CAPAIAN HASIL BELAJAR</div>
+                </div>
+
+                <!-- Tabel Nilai -->
+                <table class="values">
+                <thead>
+                    <tr>
+                    <th>No</th>
+                    <th>Mata Pelajaran / Capaian Kompetensi</th>
+                    <th>Nilai Akhir</th>
+                    <th>Capaian Kompetensi (Deskripsi)</th>
+                    </tr>
+                </thead>
+                <tbody>${rowsNilai}</tbody>
+                </table>
+
+                <!-- Tanda Tangan -->
+                <div class="signatures">
+                <div class="sig" style="text-align:left;">
+                    <div>Orang Tua/Wali</div>
+                    <div class="name">(..........................)</div>
+                </div>
+                <div class="sig">
+                    <div>Wali Kelas</div>
+                    <div class="name">${siswa.waliKelas || '-'}</div>
+                </div>
+                <div class="sig" style="text-align:right;">
+                    <div>Kepala Madrasah</div>
+                    <div class="name">Drs. H. Asep Ahmad, M.Ed</div>
+                </div>
+                </div>
+
+                <!-- Footer -->
+                <div class="footer">
+                Rapor Digital Madrasah — Cetak: ${new Date().toLocaleDateString()}
+                </div>
+            </div>
+
+            <!-- Tombol aksi -->
+            <div class="text-center mt-6 no-print">
+                <button onclick="cetakRaport()" class="bg-primary text-white px-6 py-3 rounded-lg">🖨️ Cetak Raport</button>
+                <button onclick="downloadRaportPDF()" class="bg-green-500 text-white px-6 py-3 rounded-lg">📄 Download PDF</button>
+            </div>
             `;
-            
+
             document.getElementById('raportPreview').innerHTML = raportHTML;
             document.getElementById('raportPreview').classList.remove('hidden');
         }
