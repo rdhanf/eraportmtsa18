@@ -74,9 +74,24 @@
     
     <!-- Firebase SDK -->
     <script type="module">
-        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc, query, where, orderBy } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
-        
+        // ✅ Perhatikan: Menambahkan setDoc untuk operasi set/write dokumen
+        import { 
+            initializeApp 
+        } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { 
+            getFirestore, 
+            collection, 
+            addDoc, 
+            getDocs, 
+            doc, 
+            updateDoc, 
+            deleteDoc, 
+            query, 
+            where, 
+            orderBy,
+            setDoc // 💡 BARU: Diperlukan untuk operasi set
+        } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
         // ✅ KONFIGURASI FIREBASE ANDA
         const firebaseConfig = {
             apiKey: "AIzaSyDrGCNggspGbWtevn2zMH5lnP7NkThKGlc",
@@ -102,13 +117,169 @@
         window.query = query;
         window.where = where;
         window.orderBy = orderBy;
+        window.setDoc = setDoc; // 💡 BARU: Tambahkan setDoc ke window
         
         // Initialize app when Firebase is ready
         window.addEventListener('load', () => {
-            window.initializeAppFirebase();
+            if (window.initializeAppFirebase) {
+                window.initializeAppFirebase();
+            }
         });
     </script>
-</head>
+
+    <script>
+            // Catatan: Asumsi variabel global seperti dataSiswa, dataNilai, currentUser, 
+            // dan fungsi loadSiswaForNilai() sudah didefinisikan di tempat lain.
+            
+            // Download Template Excel (TIDAK ADA PERUBAHAN)
+            function downloadTemplateNilai() {
+                const kelas = document.getElementById('kelasSelect')?.value;
+                const mapel = document.getElementById('mapelSelect')?.value;
+                if (!kelas || !mapel) {
+                    alert("⚠️ Pilih kelas dan mata pelajaran dulu!");
+                    return;
+                }
+
+                let siswaKelas = Array.isArray(dataSiswa) ? dataSiswa.filter(s => (s.kelas || '').toString().trim() === kelas.toString().trim()) : [];
+                if (siswaKelas.length === 0) {
+                    alert("⚠️ Tidak ada siswa di kelas ini.");
+                    return;
+                }
+
+                siswaKelas = siswaKelas.sort((a, b) => (a.nama || "").localeCompare(b.nama || "", 'id', { sensitivity: 'base' }));
+
+                const rows = [["NIS", "Nama Siswa", "Nilai", "Deskripsi"]];
+                siswaKelas.forEach(s => rows.push([s.nis, s.nama, "", ""]));
+
+                const ws = XLSX.utils.aoa_to_sheet(rows);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Nilai");
+                XLSX.writeFile(wb, `Template_Nilai_${kelas}_${mapel}.xlsx`);
+            }
+
+
+            // Upload Excel Nilai
+            function uploadNilaiExcel() {
+                const file = document.getElementById("uploadNilaiFile").files[0];
+                if (!file) {
+                    alert("⚠️ Pilih file Excel terlebih dahulu!");
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: "array" });
+                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+                    const mapel = document.getElementById('mapelSelect').value;
+                    const asesmen = document.getElementById('asesmenSelect').value;
+
+                    for (let i = 1; i < jsonData.length; i++) {
+                        const row = jsonData[i];
+                        if (!row[0]) continue; // skip baris kosong
+
+                        const nis = String(row[0]).trim();
+                        const nilai = row[2] || "";
+                        const deskripsi = row[3] || "";
+
+                        if (!nis) continue; // skip jika NIS kosong
+
+                        const existing = dataNilai.find(n => 
+                            n.nis === nis && n.mapel === mapel && n.asesmen === asesmen
+                        );
+
+                        if (existing) {
+                            existing.nilai = parseInt(nilai) || 0;
+                            existing.deskripsi = deskripsi;
+                        } else {
+                            dataNilai.push({
+                                nis,
+                                mapel,
+                                asesmen,
+                                nilai: parseInt(nilai) || 0,
+                                deskripsi,
+                                guru: currentUser?.name || "Guru"
+                            });
+                        }
+                    }
+
+                    alert("✅ Data nilai berhasil diupload ke memori lokal!");
+                    console.log("Data Nilai setelah upload (Lokal):", dataNilai);
+                    loadSiswaForNilai(); // refresh tabel
+
+                    // 🚀 PERBAIKAN UTAMA #1: Panggil fungsi penyimpanan setelah upload berhasil
+                    simpanNilai(); 
+                };
+                reader.readAsArrayBuffer(file);
+            }
+
+            // Simpan Nilai ke Firebase
+            async function simpanNilai() { // Gunakan async karena kita menggunakan await
+                const mapel = document.getElementById('mapelSelect').value;
+                const kelas = document.getElementById('kelasSelect').value;
+                const asesmen = document.getElementById('asesmenSelect').value;
+
+                if (!mapel || !kelas || !asesmen) {
+                    alert("⚠️ Pilih mapel, kelas, dan asesmen dulu!");
+                    return;
+                }
+
+                const nilaiToSave = dataNilai.filter(n => n.mapel === mapel && n.asesmen === asesmen);
+
+                if (nilaiToSave.length === 0) {
+                    alert("⚠️ Tidak ada data nilai untuk disimpan.");
+                    return;
+                }
+
+                let successCount = 0;
+                let errorCount = 0;
+
+                // Proses penyimpanan secara paralel (Promise.all) untuk efisiensi
+                const savePromises = nilaiToSave.map(n => {
+                    if (!n.nis) {
+                        console.error("❌ Data invalid, NIS kosong:", n);
+                        errorCount++;
+                        return Promise.resolve(); // Lanjutkan ke data berikutnya
+                    }
+
+                    const nisStr = String(n.nis).trim();
+                    const docId = `${nisStr}_${mapel}_${asesmen}`;
+                    
+                    // 🚀 PERBAIKAN UTAMA #2: Menggunakan sintaks Modular (v9/v10): setDoc(doc(db, collectionName, docId), data)
+                    const nilaiDocRef = doc(db, "nilai", docId); 
+
+                    return setDoc(nilaiDocRef, {
+                        nis: nisStr,
+                        mapel,
+                        asesmen,
+                        nilai: Number(n.nilai) || 0,
+                        deskripsi: n.deskripsi || "",
+                        guru: n.guru || (currentUser?.name || "Guru"),
+                        kelas: kelas
+                    })
+                    .then(() => {
+                        console.log(`✅ Nilai ${nisStr} berhasil disimpan`);
+                        successCount++;
+                    })
+                    .catch(error => {
+                        console.error(`❌ Error simpan nilai ${nisStr}:`, error);
+                        errorCount++;
+                    });
+                });
+
+                // Tunggu hingga semua operasi penyimpanan selesai
+                await Promise.all(savePromises);
+
+                alert(`✅ Proses penyimpanan selesai: ${successCount} berhasil, ${errorCount} gagal/dilewati.`);
+                
+                // Opsional: Muat ulang data nilai dari Firebase setelah penyimpanan selesai
+                // await loadNilai();
+            }
+        </script>
+
+
 <body class="bg-gray-50 min-h-screen">
     <!-- Loading Screen -->
     <div id="loadingScreen" class="fixed inset-0 bg-white flex items-center justify-center z-50">
@@ -382,67 +553,82 @@
             </div>
         </nav>
 
-        <!-- Content Area -->
-        <div class="p-6">
-            <!-- Input Nilai Section -->
-            <div id="guruInputSection" class="guru-section">
-                <div class="bg-white rounded-lg shadow-sm p-6">
-                    <h2 class="text-xl font-semibold text-gray-800 mb-6">Input Nilai Siswa</h2>
-                    
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Mata Pelajaran</label>
-                            <select id="mapelSelect" onchange="loadSiswaForNilai()" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                                <option value="">Pilih Mata Pelajaran</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Kelas</label>
-                            <select id="kelasSelect" onchange="loadSiswaForNilai()" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                                <option value="">Pilih Kelas</option>
-                                <option value="VII A">VII A</option>
-                                <option value="VII B">VII B</option>
-                                <option value="VIII A">VIII A</option>
-                                <option value="VIII B">VIII B</option>
-                                <option value="IX A">IX A</option>
-                                <option value="IX B">IX B</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Jenis Asesmen</label>
-                            <select id="asesmenSelect" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                                <option value="ASTS">ASTS (Tengah Semester)</option>
-                                <option value="ASAS">ASAS (Akhir Semester)</option>
-                            </select>
-                        </div>
+        <!-- Input Nilai Section -->
+        <div id="guruInputSection" class="guru-section">
+            <div class="bg-white rounded-lg shadow-sm p-6">
+                <h2 class="text-xl font-semibold text-gray-800 mb-6">Input Nilai Siswa</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Mata Pelajaran</label>
+                        <select id="mapelSelect" onchange="loadSiswaForNilai()" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                            <option value="">Pilih Mata Pelajaran</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Kelas</label>
+                        <select id="kelasSelect" onchange="loadSiswaForNilai()" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                            <option value="">Pilih Kelas</option>
+                            <option value="VII A">VII A</option>
+                            <option value="VII B">VII B</option>
+                            <option value="VIII A">VIII A</option>
+                            <option value="VIII B">VIII B</option>
+                            <option value="IX A">IX A</option>
+                            <option value="IX B">IX B</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Jenis Asesmen</label>
+                        <select id="asesmenSelect" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                            <option value="ASTS">ASTS (Tengah Semester)</option>
+                            <option value="ASAS">ASAS (Akhir Semester)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 🔹 Tombol Download & Upload Excel -->
+                <div class="mb-6 flex space-x-4">
+                    <button onclick="downloadTemplateNilai()" 
+                        class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition duration-200">
+                        📄 Download Template Excel
+                    </button>
+
+                    <input type="file" id="uploadNilaiFile" accept=".xlsx,.xls" 
+                        class="border border-gray-300 rounded-lg px-3 py-2">
+
+                    <button onclick="uploadNilaiExcel()" 
+                        class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition duration-200">
+                        ⬆️ Upload Nilai Excel
+                    </button>
+                </div>
+                
+                <div id="nilaiInputArea" class="hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full border-collapse border border-gray-300">
+                            <thead>
+                                <tr class="bg-gray-50">
+                                    <th class="border border-gray-300 px-4 py-3 text-left">No</th>
+                                    <th class="border border-gray-300 px-4 py-3 text-left">NIS</th>
+                                    <th class="border border-gray-300 px-4 py-3 text-left">Nama Siswa</th>
+                                    <th class="border border-gray-300 px-4 py-3 text-left">Nilai</th>
+                                    <th class="border border-gray-300 px-4 py-3 text-left">Deskripsi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="nilaiTableBody">
+                                <!-- Data siswa untuk input nilai akan dimuat di sini -->
+                            </tbody>
+                        </table>
                     </div>
                     
-                    <div id="nilaiInputArea" class="hidden">
-                        <div class="overflow-x-auto">
-                            <table class="w-full border-collapse border border-gray-300">
-                                <thead>
-                                    <tr class="bg-gray-50">
-                                        <th class="border border-gray-300 px-4 py-3 text-left">No</th>
-                                        <th class="border border-gray-300 px-4 py-3 text-left">NIS</th>
-                                        <th class="border border-gray-300 px-4 py-3 text-left">Nama Siswa</th>
-                                        <th class="border border-gray-300 px-4 py-3 text-left">Nilai</th>
-                                        <th class="border border-gray-300 px-4 py-3 text-left">Deskripsi</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="nilaiTableBody">
-                                    <!-- Data siswa untuk input nilai akan dimuat di sini -->
-                                </tbody>
-                            </table>
-                        </div>
-                        
-                        <div class="mt-6 flex justify-end">
-                            <button onclick="simpanNilai()" class="bg-green-500 text-white px-6 py-2 rounded-lg hover:bg-green-600 transition duration-200">
-                                💾 Simpan ke Firebase
-                            </button>
-                        </div>
+                    <div class="mt-6 flex justify-end">
+                        <button onclick="simpanNilai()" class="bg-green-500 text-white px-6 py-2 rounded-lg hover:bg-green-600 transition duration-200">
+                            💾 Simpan ke Firebase
+                        </button>
                     </div>
                 </div>
             </div>
+        </div>
+
 
             <!-- Cetak Raport Section -->
             <div id="guruCetakSection" class="guru-section hidden">
@@ -1415,16 +1601,36 @@
         });
 
         // Guru Functions
-        function showGuruSection(section) {
-            // Hide all sections
+        function showGuruSection(section, evt) {
+            // Hide all guru sections
             document.querySelectorAll('.guru-section').forEach(s => s.classList.add('hidden'));
-            
-            // Show selected section
-            document.getElementById(`guru${section.charAt(0).toUpperCase() + section.slice(1)}Section`).classList.remove('hidden');
-            
-            // Update navigation
+
+            // Build section id (sama seperti sebelumnya)
+            const sectionId = `guru${section.charAt(0).toUpperCase() + section.slice(1)}Section`;
+            const sectionEl = document.getElementById(sectionId);
+            if (sectionEl) sectionEl.classList.remove('hidden');
+
+            // Update navigation active kelas
             document.querySelectorAll('.guru-nav-btn').forEach(btn => btn.classList.remove('bg-blue-700'));
-            event.target.classList.add('bg-blue-700');
+
+            // Jika pemanggil menyediakan event target (mis. klik), pakai itu
+            if (evt && evt.target) {
+                evt.target.classList.add('bg-blue-700');
+                return;
+            }
+
+            // Jika dipanggil programatik (mis. dari showDashboard), cari tombol yang memanggil fungsi ini
+            // Mencari <button onclick="showGuruSection('input')"> atau yg setara
+            const selector = `button[onclick="showGuruSection('${section}')"], button[onclick="showGuruSection(\\'${section}\\')"]`;
+            const btn = document.querySelector(selector);
+            if (btn) {
+                btn.classList.add('bg-blue-700');
+                return;
+            }
+
+            // fallback: jika ada tombol beratribut data-section
+            const btn2 = document.querySelector(`.guru-nav-btn[data-section="${section}"]`);
+            if (btn2) btn2.classList.add('bg-blue-700');
         }
 
         function loadGuruData() {
@@ -1535,66 +1741,86 @@
         }
 
 
-        async function simpanNilai() {
-            const mapel = document.getElementById('mapelSelect').value;
-            const kelas = document.getElementById('kelasSelect').value;
-            const asesmen = document.getElementById('asesmenSelect').value;
-            
-            if (!mapel || !kelas) {
-                alert('Pilih mata pelajaran dan kelas terlebih dahulu!');
+        // Simpan Nilai ke Firebase (DIPERBAIKI: Mengambil data docId dari objek 'n')
+        async function simpanNilai() { 
+            // Ambil nilai dari elemen SELECT (untuk filter data)
+            const currentMapel = document.getElementById('mapelSelect').value;
+            const currentKelas = document.getElementById('kelasSelect').value;
+            const currentAsesmen = document.getElementById('asesmenSelect').value;
+
+            if (!currentMapel || !currentKelas || !currentAsesmen) {
+                alert("⚠️ Pilih mapel, kelas, dan asesmen dulu!");
                 return;
             }
-            
-            try {
-                const siswaKelas = dataSiswa.filter(s => s.kelas === kelas);
-                let berhasilSimpan = 0;
+
+            // Filter data yang akan disimpan berdasarkan pilihan di form
+            const nilaiToSave = dataNilai.filter(n => 
+                n.mapel === currentMapel && n.asesmen === currentAsesmen
+            );
+
+            if (nilaiToSave.length === 0) {
+                alert("⚠️ Tidak ada data nilai untuk disimpan.");
+                return;
+            }
+
+            let successCount = 0;
+            let errorCount = 0;
+
+            // Proses penyimpanan secara paralel (Promise.all)
+            const savePromises = nilaiToSave.map(n => {
+                // ⚠️ PENTING: Lakukan validasi nis di sini, jika kosong, nisStr akan undefined/string kosong
+                const nisStr = String(n.nis || "").trim(); 
                 
-                for (const siswa of siswaKelas) {
-                    const nilai = document.getElementById(`nilai_${siswa.nis}`).value;
-                    const deskripsi = document.getElementById(`deskripsi_${siswa.nis}`).value;
-                    
-                    if (nilai) {
-                        // Check if nilai already exists
-                        const existingNilai = dataNilai.find(n => 
-                            n.nis === siswa.nis && n.mapel === mapel && n.asesmen === asesmen
-                        );
-                        
-                        const nilaiData = {
-                            nis: siswa.nis,
-                            mapel: mapel,
-                            asesmen: asesmen,
-                            nilai: parseInt(nilai),
-                            deskripsi: deskripsi,
-                            guru: currentUser.name,
-                            timestamp: new Date()
-                        };
-                        
-                        if (existingNilai) {
-                            // Update existing nilai
-                            if (isFirebaseReady) {
-                                await updateDoc(doc(db, 'nilai', existingNilai.id), nilaiData);
-                            }
-                            Object.assign(existingNilai, nilaiData);
-                        } else {
-                            // Add new nilai
-                            if (isFirebaseReady) {
-                                const docRef = await addDoc(collection(db, 'nilai'), nilaiData);
-                                dataNilai.push({ id: docRef.id, ...nilaiData });
-                            } else {
-                                nilaiData.id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-                                dataNilai.push(nilaiData);
-                            }
-                        }
-                        
-                        berhasilSimpan++;
-                    }
+                if (!nisStr) {
+                    console.error("❌ Data invalid, NIS kosong:", n);
+                    errorCount++;
+                    return Promise.resolve();
+                }
+
+                // 💡 PERBAIKAN: Pastikan mapel dan asesmen juga ada (meski sudah difilter, ini untuk keamanan)
+                // Kita gunakan data dari objek 'n', bukan variabel 'currentMapel'/'currentAsesmen'
+                const mapelDoc = n.mapel || currentMapel;
+                const asesmenDoc = n.asesmen || currentAsesmen;
+                
+                // Buat ID dokumen. Jika salah satu (nisStr, mapelDoc, asesmenDoc) undefined/null,
+                // akan menghasilkan string kosong yang menyebabkan error di doc()
+                const docId = `${nisStr}_${mapelDoc}_${asesmenDoc}`;
+                
+                // Cek final sebelum kirim ke Firebase
+                if (!docId.trim() || docId.includes('undefined') || docId.includes('null')) {
+                    console.error(`❌ Gagal buat Doc ID: ${docId}`, n);
+                    errorCount++;
+                    return Promise.resolve();
                 }
                 
-                alert(`✅ Berhasil menyimpan ${berhasilSimpan} nilai siswa!`);
-            } catch (error) {
-                console.error('❌ Error saving nilai:', error);
-                alert('Gagal menyimpan nilai: ' + error.message);
-            }
+                const nilaiDocRef = doc(db, "nilai", docId); 
+
+                return setDoc(nilaiDocRef, {
+                    nis: nisStr,
+                    mapel: mapelDoc,
+                    asesmen: asesmenDoc,
+                    nilai: Number(n.nilai) || 0,
+                    deskripsi: n.deskripsi || "",
+                    guru: n.guru || (currentUser?.name || "Guru"),
+                    kelas: currentKelas // Gunakan kelas yang dipilih
+                })
+                .then(() => {
+                    console.log(`✅ Nilai ${nisStr} berhasil disimpan: ${docId}`);
+                    successCount++;
+                })
+                .catch(error => {
+                    console.error(`❌ Error simpan nilai ${nisStr} (${docId}):`, error);
+                    errorCount++;
+                    // Tangkap error perizinan di sini:
+                    if (error.code === 'permission-denied') {
+                        alert(`🛑 ERROR PERIZINAN: Pastikan Aturan Keamanan Firebase mengizinkan penulisan ke koleksi 'nilai'.`);
+                    }
+                });
+            });
+
+            await Promise.all(savePromises);
+
+            alert(`✅ Proses penyimpanan selesai: ${successCount} berhasil, ${errorCount} gagal/dilewati.`);
         }
 
         function loadSiswaForCetak() {
@@ -1704,7 +1930,7 @@
                 <!-- Header -->
                 <div class="header">
                 <div class="logo">
-                    <img src="/images/attaqwa.png" alt="Logo Sekolah" style="width:72px; height:72px; object-fit:contain;">
+                    <img src="index/images/attaqwa.png" alt="Logo Sekolah" style="width:72px; height:72px; object-fit:contain;">
                 </div>
                 <div class="school-info">
                     <div class="title">KEMENTERIAN AGAMA REPUBLIK INDONESIA</div>
